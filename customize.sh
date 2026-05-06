@@ -134,6 +134,14 @@ ui_print "- 正在释放 Debian 根文件系统"
 tar -xf $MODPATH/debian.tar.bz2 -C /data/local
 rm -f $MODPATH/debian.tar.bz2
 
+ui_print "- 正在修复 Debian 软件源"
+rm -f $rootfs/etc/apt/sources.list.d/nodesource.list
+cat > $rootfs/etc/apt/sources.list << EOF
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye-updates main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-security bullseye-security main contrib non-free
+EOF
+
 if [ -d "/data/debian/ql/data" ]
 then
 ui_print "- 正在迁移已有青龙数据"
