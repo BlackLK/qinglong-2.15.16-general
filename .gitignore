@@ -1,0 +1,5 @@
+*.zip
+*.log
+build/
+dist/
+*.tmp
