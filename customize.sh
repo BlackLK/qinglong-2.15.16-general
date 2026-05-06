@@ -111,7 +111,25 @@ $busybox --install -s /dev/busybox || abort "- 初始化 BusyBox 失败！"
 export PATH=/dev/busybox:$PATH
 export rootfs=/data/local/debian
 
-[ -e "$rootfs/sys/kernel" ] && abort "- 请重启后再尝试安装！" || rm -rf $rootfs
+unmountdir()
+{
+  fuser -k $rootfs 2>/dev/null
+
+  for umount_dir in $(cat /proc/mounts | awk '{print $2}' | grep "^$rootfs" | sort -r)
+  do
+    umount -f ${umount_dir} 2>/dev/null || umount -l ${umount_dir} 2>/dev/null
+    wait
+  done
+}
+
+if [ -e "$rootfs/proc/1" ]; then
+ui_print "- 检测到旧 Debian 环境残留，正在尝试清理"
+unmountdir
+if [ -e "$rootfs/proc/1" ]; then
+abort "- 旧 Debian 环境仍被占用，请重启平板后再次安装！"
+fi
+fi
+rm -rf $rootfs
 ui_print "- 正在释放 Debian 根文件系统"
 tar -xf $MODPATH/debian.tar.bz2 -C /data/local
 rm -f $MODPATH/debian.tar.bz2
@@ -140,17 +158,6 @@ $MODPATH/init $rootfs
 chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev /'
 ui_print "- 正在安装青龙面板依赖，耗时较长请耐心等待"
 chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux /bin/bash -c 'source /root/.bashrc && apt update && apt install --no-install-recommends -y nodejs netcat build-essential libc6-dev python3-dev python-is-python3 python3-pip && npm --registry https://registry.npmmirror.com i -g pnpm && pnpm config set -g registry=https://registry.npmmirror.com && pnpm add -g pm2 tsx && cd /ql && pnpm install --prod && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm' >/dev/log.txt || abort "- 安装面板依赖失败，请重启后再次尝试安装！"
-
-unmountdir()
-{
-  fuser -k $rootfs
-
-  for umount_dir in $(cat /proc/mounts | awk '{print $2}' | grep "^$rootfs" | sort -r)
-  do
-    umount -f ${umount_dir}
-    wait
-  done
-}
 
 unmountdir
 ui_print "- 青龙面板模块安装完成，重启后访问 http://127.0.0.1:5700"
