@@ -14,6 +14,7 @@
   - `/data/adb/ap/bin/busybox`
   - 系统 `busybox`
 - `service.sh` 使用同样的 BusyBox 探测逻辑，兼容 Magisk、KernelSU、SukiSU Ultra 以及 APatch 类环境。
+- 开机启动加入保护机制：重型初始化移到晚启动阶段，关键步骤带 60 秒超时，连续 3 次失败会自动禁用模块。
 - 仓库 `.gitignore` 已排除 zip 包。
 
 ## 已知注意事项
@@ -21,6 +22,7 @@
 - `debian.tar.bz2` 约 136MB，超过 GitHub 普通单文件 100MB 限制，不能直接用普通 Git 上传。
 - 如果需要上传完整源码，建议使用 Git LFS 管理 `debian.tar.bz2`，或者把该文件放到 GitHub Release 附件中。
 - 安装过程中会执行 `apt`、`npm`、`pnpm` 等联网安装步骤，刷入设备需要能访问对应源。
+- 开机服务日志路径：`/data/adb/qinglong-module.log`。
 
 ## 打包方式
 
