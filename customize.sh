@@ -170,7 +170,7 @@ run_chroot()
   cmd="$2"
   ui_print "- $step"
   log_msg "[$step] 开始"
-  chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash -lc "$cmd" >> "$installlog" 2>&1
+  chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/node18/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PNPM_HOME=/usr/local/bin NPM_CONFIG_PREFIX=/usr/local TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash -lc "$cmd" >> "$installlog" 2>&1
   rc=$?
   cat "$installlog" > "$installlog2" 2>/dev/null
   [ -d "$rootfs/root" ] && cat "$installlog" > "$rootfs/root/qinglong-install.log" 2>/dev/null
@@ -210,6 +210,26 @@ abort "- Debian 根文件系统释放失败！"
 rm -f $rootfs/root/qinglong-install.log
 touch $rootfs/root/qinglong-install.log
 rm -f $MODPATH/debian.tar.bz2
+
+ui_print "- 正在安装预置 Node.js 18 arm64"
+log_msg "[Node.js] 正在安装预置 Node.js 18 arm64"
+mkdir -p $rootfs/usr/local
+rm -rf $rootfs/usr/local/node18 $rootfs/usr/local/node-v18.20.8-linux-arm64
+tar -xzf $MODPATH/preload/nodejs.tar.gz -C $rootfs/usr/local >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 预置 Node.js 18 解压失败！"
+}
+mv $rootfs/usr/local/node-v18.20.8-linux-arm64 $rootfs/usr/local/node18 >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 预置 Node.js 18 安装失败！"
+}
+mkdir -p $rootfs/usr/local/bin
+ln -sf /usr/local/node18/bin/node $rootfs/usr/local/bin/node
+ln -sf /usr/local/node18/bin/npm $rootfs/usr/local/bin/npm
+ln -sf /usr/local/node18/bin/npx $rootfs/usr/local/bin/npx
+ln -sf /usr/local/node18/bin/corepack $rootfs/usr/local/bin/corepack
+rm -rf $rootfs/usr/local/lib/node_modules/pnpm
+log_msg "[Node.js] 预置 Node.js 18 安装完成"
 
 ui_print "- 正在修复 Debian 软件源"
 echo "[软件源] 正在修复 Debian 软件源" >> "$installlog"
@@ -265,24 +285,23 @@ abort "- 初始化 Debian 环境失败！"
 ui_print "- 正在尝试重新挂载 Debian 根目录"
 chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash -lc 'mount -o remount,exec,suid,dev /' >> "$installlog" 2>&1 || ui_print "- Debian 根目录重新挂载失败，继续安装并记录日志"
 ui_print "- 正在安装青龙面板依赖，耗时较长请耐心等待"
-run_chroot "依赖 1/18：打印系统信息" "cat /etc/os-release 2>/dev/null || true; uname -m 2>/dev/null || true"
-run_chroot "依赖 2/18：打印 APT 软件源" "cat /etc/apt/sources.list 2>/dev/null || true; ls -la /etc/apt/sources.list.d 2>/dev/null || true"
-run_chroot "依赖 3/18：执行 apt update" "apt update"
-run_chroot "依赖 4/18：安装 nodejs" "apt install --no-install-recommends -y nodejs"
-run_chroot "依赖 5/18：安装 npm" "apt install --no-install-recommends -y npm"
-run_chroot "依赖 6/18：安装 netcat-openbsd" "apt install --no-install-recommends -y netcat-openbsd"
-run_chroot "依赖 7/18：安装 build-essential" "apt install --no-install-recommends -y build-essential"
-run_chroot "依赖 8/18：安装 libc6-dev" "apt install --no-install-recommends -y libc6-dev"
-run_chroot "依赖 9/18：安装 python3-dev" "apt install --no-install-recommends -y python3-dev"
-run_chroot "依赖 10/18：安装 python-is-python3" "apt install --no-install-recommends -y python-is-python3"
-run_chroot "依赖 11/18：安装 python3-pip" "apt install --no-install-recommends -y python3-pip"
-run_chroot "依赖 12/18：检查 Node / npm / Python" "node -v; npm -v; python3 --version"
-run_chroot "依赖 13/18：安装 pnpm" "npm --registry https://registry.npmmirror.com i -g pnpm"
-run_chroot "依赖 14/18：配置 pnpm 镜像" "pnpm config set -g registry https://registry.npmmirror.com"
-run_chroot "依赖 15/18：安装 pm2" "pnpm add -g pm2"
-run_chroot "依赖 16/18：安装 tsx" "pnpm add -g tsx"
-run_chroot "依赖 17/18：安装青龙生产依赖" "cd /ql && pnpm install --prod"
-run_chroot "依赖 18/18：修复青龙配置并清理缓存" "cd /ql && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm"
+run_chroot "依赖 1/17：打印系统信息" "cat /etc/os-release 2>/dev/null || true; uname -m 2>/dev/null || true"
+run_chroot "依赖 2/17：打印 APT 软件源" "cat /etc/apt/sources.list 2>/dev/null || true; ls -la /etc/apt/sources.list.d 2>/dev/null || true"
+run_chroot "依赖 3/17：执行 apt update" "apt update"
+run_chroot "依赖 4/17：检查预置 Node / npm" "node -v; npm -v"
+run_chroot "依赖 5/17：安装 netcat-openbsd" "apt install --no-install-recommends -y netcat-openbsd"
+run_chroot "依赖 6/17：安装 build-essential" "apt install --no-install-recommends -y build-essential"
+run_chroot "依赖 7/17：安装 libc6-dev" "apt install --no-install-recommends -y libc6-dev"
+run_chroot "依赖 8/17：安装 python3-dev" "apt install --no-install-recommends -y python3-dev"
+run_chroot "依赖 9/17：安装 python-is-python3" "apt install --no-install-recommends -y python-is-python3"
+run_chroot "依赖 10/17：安装 python3-pip" "apt install --no-install-recommends -y python3-pip"
+run_chroot "依赖 11/17：检查 Node / npm / Python" "node -v; npm -v; python3 --version"
+run_chroot "依赖 12/17：安装 pnpm 8" "npm config set prefix /usr/local && npm --registry https://registry.npmmirror.com i -g pnpm@8.15.9"
+run_chroot "依赖 13/17：配置 pnpm 镜像" "pnpm config set -g registry https://registry.npmmirror.com"
+run_chroot "依赖 14/17：安装 pm2" "pnpm add -g pm2"
+run_chroot "依赖 15/17：安装 tsx" "pnpm add -g tsx"
+run_chroot "依赖 16/17：安装青龙生产依赖" "cd /ql && pnpm install --prod"
+run_chroot "依赖 17/17：修复青龙配置并清理缓存" "cd /ql && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm"
 
 unmountdir
 ui_print "- 青龙面板模块安装完成，重启后访问 http://127.0.0.1:5700"
