@@ -184,13 +184,15 @@ run_chroot()
 
 unmountdir()
 {
-  fuser -k $rootfs 2>/dev/null
+  fuser -k $rootfs 2>/dev/null || true
 
   for umount_dir in $(cat /proc/mounts | awk '{print $2}' | grep "^$rootfs" | sort -r)
   do
-    umount -f ${umount_dir} 2>/dev/null || umount -l ${umount_dir} 2>/dev/null
-    wait
+    umount -f ${umount_dir} 2>/dev/null || umount -l ${umount_dir} 2>/dev/null || true
+    wait || true
   done
+
+  return 0
 }
 
 if [ -e "$rootfs/proc/1" ]; then
@@ -300,10 +302,13 @@ run_chroot "依赖 12/17：安装 pnpm 8" "npm config set prefix /usr/local && n
 run_chroot "依赖 13/17：配置 pnpm 镜像" "pnpm config set -g registry https://registry.npmmirror.com"
 run_chroot "依赖 14/17：安装 pm2" "pnpm add -g pm2"
 run_chroot "依赖 15/17：安装 tsx" "pnpm add -g tsx"
-run_chroot "依赖 16/17：安装青龙生产依赖" "cd /ql && pnpm install --prod"
+run_chroot "依赖 16/17：安装青龙生产依赖" "cd /ql && pnpm install --prod --reporter append-only --child-concurrency 1 --network-concurrency 4"
 run_chroot "依赖 17/17：修复青龙配置并清理缓存" "cd /ql && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm"
 
+ui_print "- 正在安全卸载 Debian 临时挂载"
+log_msg "[收尾] 正在安全卸载 Debian 临时挂载"
 unmountdir
+log_msg "[收尾] Debian 临时挂载卸载完成"
 ui_print "- 青龙面板模块安装完成，重启后访问 http://127.0.0.1:5700"
 ui_print "- 已启用开机保护机制：服务将在晚启动阶段运行"
 ui_print "- 关键启动步骤超时时间：60 秒"
