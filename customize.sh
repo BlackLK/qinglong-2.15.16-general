@@ -114,6 +114,25 @@ export installlog=/data/adb/qinglong-install.log
 rm -f "$installlog"
 touch "$installlog"
 
+device_model=$(getprop ro.product.model 2>/dev/null)
+device_name=$(getprop ro.product.name 2>/dev/null)
+device_abi=$(getprop ro.product.cpu.abi 2>/dev/null)
+android_version=$(getprop ro.build.version.release 2>/dev/null)
+kernel_arch=$(uname -m 2>/dev/null)
+ui_print "- 设备型号：${device_model:-unknown}"
+ui_print "- 设备代号：${device_name:-unknown}"
+ui_print "- Android 版本：${android_version:-unknown}"
+ui_print "- CPU ABI：${device_abi:-unknown}"
+ui_print "- 内核架构：${kernel_arch:-unknown}"
+ui_print "- 64 位设备同样需要 Debian rootfs，当前将使用 arm64 Linux 用户态环境"
+ui_print "- rootfs 临时路径：$rootfs"
+echo "[设备] 型号：${device_model:-unknown}" >> "$installlog"
+echo "[设备] 代号：${device_name:-unknown}" >> "$installlog"
+echo "[设备] Android：${android_version:-unknown}" >> "$installlog"
+echo "[设备] CPU ABI：${device_abi:-unknown}" >> "$installlog"
+echo "[设备] 内核架构：${kernel_arch:-unknown}" >> "$installlog"
+echo "[说明] 64 位 Android 设备仍需要 arm64 Debian rootfs 作为青龙运行环境" >> "$installlog"
+
 print_log_tail()
 {
   ui_print "- 最近安装日志："
