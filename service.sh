@@ -4,7 +4,7 @@
 # 这将确保您的模块仍能正常工作
 # 即使Magisk将来更改其挂载点
 MODDIR=${0%/*}
-export rootfs=/data/debian
+export rootfs=/data/local/debian
 logfile=/data/adb/qinglong-module.log
 failfile=/data/adb/qinglong-module.fail
 maxfails=3
@@ -20,6 +20,9 @@ busybox=$(command -v busybox)
 else
 exit 1
 fi
+
+(
+sleep 45
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') 青龙模块服务启动" >> "$logfile"
 
@@ -46,7 +49,7 @@ exit 1
 }
 fi
 
-$busybox timeout 60 chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev / && ls -1 /etc/init.d | xargs -I {} service {} start' >> "$logfile" 2>&1 || {
+$busybox timeout 45 chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/node18/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev / && ls -1 /etc/init.d | xargs -I {} service {} start' >> "$logfile" 2>&1 || {
 fails=$((fails + 1))
 echo "$fails" > "$failfile"
 echo "$(date '+%Y-%m-%d %H:%M:%S') 启动系统服务失败，失败次数：$fails" >> "$logfile"
@@ -66,3 +69,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') 青龙模块服务启动完成" >> "$logfile"
 #酷友提供
 echo "PowerManagerService.noSuspend" > /sys/power/wake_lock
 dumpsys deviceidle disable
+
+) >/dev/null 2>&1 &
+
+exit 0
