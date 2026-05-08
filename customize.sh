@@ -111,8 +111,11 @@ $busybox --install -s /dev/busybox || abort "- 初始化 BusyBox 失败！"
 export PATH=/dev/busybox:$PATH
 export rootfs=/data/local/debian
 export installlog=/data/adb/qinglong-install.log
+export installlog2=/data/local/tmp/qinglong-install.log
 rm -f "$installlog"
+rm -f "$installlog2"
 touch "$installlog"
+touch "$installlog2"
 
 device_model=$(getprop ro.product.model 2>/dev/null)
 device_name=$(getprop ro.product.name 2>/dev/null)
@@ -140,6 +143,43 @@ print_log_tail()
   do
     ui_print "  $line"
   done
+  if [ ! -s "$installlog" ] && [ -s "$installlog2" ]; then
+    tail -60 "$installlog2" 2>/dev/null | while read line
+    do
+      ui_print "  $line"
+    done
+  fi
+  if [ -f "$rootfs/root/qinglong-install.log" ]; then
+    tail -60 "$rootfs/root/qinglong-install.log" 2>/dev/null | while read line
+    do
+      ui_print "  $line"
+    done
+  fi
+}
+
+log_msg()
+{
+  echo "$1" >> "$installlog"
+  echo "$1" >> "$installlog2"
+  [ -d "$rootfs/root" ] && echo "$1" >> "$rootfs/root/qinglong-install.log"
+}
+
+run_chroot()
+{
+  step="$1"
+  cmd="$2"
+  ui_print "- $step"
+  log_msg "[$step] 开始"
+  chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash -lc "$cmd" >> "$installlog" 2>&1
+  rc=$?
+  cat "$installlog" > "$installlog2" 2>/dev/null
+  [ -d "$rootfs/root" ] && cat "$installlog" > "$rootfs/root/qinglong-install.log" 2>/dev/null
+  if [ "$rc" != "0" ]; then
+    log_msg "[$step] 失败，退出码：$rc"
+    print_log_tail
+    abort "- $step 失败，退出码：$rc，详细日志：/data/adb/qinglong-install.log"
+  fi
+  log_msg "[$step] 完成"
 }
 
 unmountdir()
@@ -167,6 +207,8 @@ tar -xf $MODPATH/debian.tar.bz2 -C /data/local >> "$installlog" 2>&1 || {
 print_log_tail
 abort "- Debian 根文件系统释放失败！"
 }
+rm -f $rootfs/root/qinglong-install.log
+touch $rootfs/root/qinglong-install.log
 rm -f $MODPATH/debian.tar.bz2
 
 ui_print "- 正在修复 Debian 软件源"
@@ -220,47 +262,27 @@ $MODPATH/init $rootfs >> "$installlog" 2>&1 || {
 print_log_tail
 abort "- 初始化 Debian 环境失败！"
 }
-chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev /' >> "$installlog" 2>&1 || {
-print_log_tail
-abort "- Debian 根目录重新挂载失败！"
-}
+ui_print "- 正在尝试重新挂载 Debian 根目录"
+chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash -lc 'mount -o remount,exec,suid,dev /' >> "$installlog" 2>&1 || ui_print "- Debian 根目录重新挂载失败，继续安装并记录日志"
 ui_print "- 正在安装青龙面板依赖，耗时较长请耐心等待"
-cat > $rootfs/root/qinglong-install-deps.sh << EOF
-set -e
-echo "[依赖 1/10] 系统信息"
-cat /etc/os-release 2>/dev/null || true
-uname -m 2>/dev/null || true
-echo "[依赖 2/10] APT 软件源"
-cat /etc/apt/sources.list 2>/dev/null || true
-ls -la /etc/apt/sources.list.d 2>/dev/null || true
-echo "[依赖 3/10] apt update"
-apt update
-echo "[依赖 4/10] 安装基础依赖"
-apt install --no-install-recommends -y nodejs netcat build-essential libc6-dev python3-dev python-is-python3 python3-pip
-echo "[依赖 5/10] 检查 Node / npm / Python"
-node -v
-npm -v
-python3 --version
-echo "[依赖 6/10] 安装 pnpm"
-npm --registry https://registry.npmmirror.com i -g pnpm
-echo "[依赖 7/10] 配置 pnpm 镜像"
-pnpm config set -g registry https://registry.npmmirror.com
-echo "[依赖 8/10] 安装 pm2 和 tsx"
-pnpm add -g pm2 tsx
-echo "[依赖 9/10] 安装青龙生产依赖"
-cd /ql
-pnpm install --prod
-echo "[依赖 10/10] 修复青龙配置并清理缓存"
-. /ql/shell/share.sh
-fix_config
-update_depend
-rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm
-EOF
-chmod 0755 $rootfs/root/qinglong-install-deps.sh
-chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash /root/qinglong-install-deps.sh >> "$installlog" 2>&1 || {
-print_log_tail
-abort "- 安装面板依赖失败，详细日志：/data/adb/qinglong-install.log"
-}
+run_chroot "依赖 1/18：打印系统信息" "cat /etc/os-release 2>/dev/null || true; uname -m 2>/dev/null || true"
+run_chroot "依赖 2/18：打印 APT 软件源" "cat /etc/apt/sources.list 2>/dev/null || true; ls -la /etc/apt/sources.list.d 2>/dev/null || true"
+run_chroot "依赖 3/18：执行 apt update" "apt update"
+run_chroot "依赖 4/18：安装 nodejs" "apt install --no-install-recommends -y nodejs"
+run_chroot "依赖 5/18：安装 npm" "apt install --no-install-recommends -y npm"
+run_chroot "依赖 6/18：安装 netcat-openbsd" "apt install --no-install-recommends -y netcat-openbsd"
+run_chroot "依赖 7/18：安装 build-essential" "apt install --no-install-recommends -y build-essential"
+run_chroot "依赖 8/18：安装 libc6-dev" "apt install --no-install-recommends -y libc6-dev"
+run_chroot "依赖 9/18：安装 python3-dev" "apt install --no-install-recommends -y python3-dev"
+run_chroot "依赖 10/18：安装 python-is-python3" "apt install --no-install-recommends -y python-is-python3"
+run_chroot "依赖 11/18：安装 python3-pip" "apt install --no-install-recommends -y python3-pip"
+run_chroot "依赖 12/18：检查 Node / npm / Python" "node -v; npm -v; python3 --version"
+run_chroot "依赖 13/18：安装 pnpm" "npm --registry https://registry.npmmirror.com i -g pnpm"
+run_chroot "依赖 14/18：配置 pnpm 镜像" "pnpm config set -g registry https://registry.npmmirror.com"
+run_chroot "依赖 15/18：安装 pm2" "pnpm add -g pm2"
+run_chroot "依赖 16/18：安装 tsx" "pnpm add -g tsx"
+run_chroot "依赖 17/18：安装青龙生产依赖" "cd /ql && pnpm install --prod"
+run_chroot "依赖 18/18：修复青龙配置并清理缓存" "cd /ql && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm"
 
 unmountdir
 ui_print "- 青龙面板模块安装完成，重启后访问 http://127.0.0.1:5700"
