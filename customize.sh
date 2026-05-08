@@ -110,6 +110,18 @@ mkdir -p /dev/busybox || abort "- 创建 BusyBox 目录失败！"
 $busybox --install -s /dev/busybox || abort "- 初始化 BusyBox 失败！"
 export PATH=/dev/busybox:$PATH
 export rootfs=/data/local/debian
+export installlog=/data/adb/qinglong-install.log
+rm -f "$installlog"
+touch "$installlog"
+
+print_log_tail()
+{
+  ui_print "- 最近安装日志："
+  tail -60 "$installlog" 2>/dev/null | while read line
+  do
+    ui_print "  $line"
+  done
+}
 
 unmountdir()
 {
@@ -131,41 +143,105 @@ fi
 fi
 rm -rf $rootfs
 ui_print "- 正在释放 Debian 根文件系统"
-tar -xf $MODPATH/debian.tar.bz2 -C /data/local
+echo "[解包] 开始释放 Debian 根文件系统" >> "$installlog"
+tar -xf $MODPATH/debian.tar.bz2 -C /data/local >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- Debian 根文件系统释放失败！"
+}
 rm -f $MODPATH/debian.tar.bz2
 
 ui_print "- 正在修复 Debian 软件源"
+echo "[软件源] 正在修复 Debian 软件源" >> "$installlog"
 rm -f $rootfs/etc/apt/sources.list.d/nodesource.list
 cat > $rootfs/etc/apt/sources.list << EOF
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye-updates main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian-security bullseye-security main contrib non-free
 EOF
+cat $rootfs/etc/apt/sources.list >> "$installlog" 2>&1
 
 if [ -d "/data/debian/ql/data" ]
 then
 ui_print "- 正在迁移已有青龙数据"
 rm -rf /data/debian/ql/data/scripts/node_modules
-cp /data/debian/ql/data -R $rootfs/ql
+cp /data/debian/ql/data -R $rootfs/ql >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 迁移已有青龙数据失败！"
+}
 fi
 if [ -d "/data/alpine/ql/data" ]
 then
 ui_print "- 正在迁移 Alpine 青龙数据"
 rm -rf /data/alpine/ql/data/scripts/node_modules
-cp /data/alpine/ql/data -R $rootfs/ql
+cp /data/alpine/ql/data -R $rootfs/ql >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 迁移 Alpine 青龙数据失败！"
+}
 fi
 
 ui_print "- 正在调整青龙运行配置"
-sed -i 's/var\/log\/nginx\/error.log/dev\/null/g' $rootfs/ql/docker/nginx.conf
-sed -i 's/nginx -s reload 2>\/dev\/null || nginx -c \/etc\/nginx\/nginx.conf/pm2 start \"nginx -c \/etc\/nginx\/nginx.conf\"/' $rootfs/ql/docker/docker-entrypoint.sh
-sed -i 's/pip3 install/pip3 install --no-cache/g' $rootfs/ql/static/build/data/dependence.js
+echo "[配置] 正在调整青龙运行配置" >> "$installlog"
+sed -i 's/var\/log\/nginx\/error.log/dev\/null/g' $rootfs/ql/docker/nginx.conf >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 调整 nginx 配置失败！"
+}
+sed -i 's/nginx -s reload 2>\/dev\/null || nginx -c \/etc\/nginx\/nginx.conf/pm2 start \"nginx -c \/etc\/nginx\/nginx.conf\"/' $rootfs/ql/docker/docker-entrypoint.sh >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 调整青龙启动脚本失败！"
+}
+sed -i 's/pip3 install/pip3 install --no-cache/g' $rootfs/ql/static/build/data/dependence.js >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 调整依赖安装配置失败！"
+}
 set_perm $MODPATH/init 0 0 0755
 
 ui_print "- 正在初始化 Debian 环境"
-$MODPATH/init $rootfs
-chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev /'
+echo "[初始化] 正在初始化 Debian 环境" >> "$installlog"
+$MODPATH/init $rootfs >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 初始化 Debian 环境失败！"
+}
+chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/su - root -c 'mount -o remount,exec,suid,dev /' >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- Debian 根目录重新挂载失败！"
+}
 ui_print "- 正在安装青龙面板依赖，耗时较长请耐心等待"
-chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux /bin/bash -c 'source /root/.bashrc && apt update && apt install --no-install-recommends -y nodejs netcat build-essential libc6-dev python3-dev python-is-python3 python3-pip && npm --registry https://registry.npmmirror.com i -g pnpm && pnpm config set -g registry=https://registry.npmmirror.com && pnpm add -g pm2 tsx && cd /ql && pnpm install --prod && . /ql/shell/share.sh && fix_config && update_depend && rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm' >/dev/log.txt || abort "- 安装面板依赖失败，请重启后再次尝试安装！"
+cat > $rootfs/root/qinglong-install-deps.sh << EOF
+set -e
+echo "[依赖 1/10] 系统信息"
+cat /etc/os-release 2>/dev/null || true
+uname -m 2>/dev/null || true
+echo "[依赖 2/10] APT 软件源"
+cat /etc/apt/sources.list 2>/dev/null || true
+ls -la /etc/apt/sources.list.d 2>/dev/null || true
+echo "[依赖 3/10] apt update"
+apt update
+echo "[依赖 4/10] 安装基础依赖"
+apt install --no-install-recommends -y nodejs netcat build-essential libc6-dev python3-dev python-is-python3 python3-pip
+echo "[依赖 5/10] 检查 Node / npm / Python"
+node -v
+npm -v
+python3 --version
+echo "[依赖 6/10] 安装 pnpm"
+npm --registry https://registry.npmmirror.com i -g pnpm
+echo "[依赖 7/10] 配置 pnpm 镜像"
+pnpm config set -g registry https://registry.npmmirror.com
+echo "[依赖 8/10] 安装 pm2 和 tsx"
+pnpm add -g pm2 tsx
+echo "[依赖 9/10] 安装青龙生产依赖"
+cd /ql
+pnpm install --prod
+echo "[依赖 10/10] 修复青龙配置并清理缓存"
+. /ql/shell/share.sh
+fix_config
+update_depend
+rm -rf /root/.pnpm-store /root/.local/share/pnpm/store /root/.cache /root/.npm
+EOF
+chmod 0755 $rootfs/root/qinglong-install-deps.sh
+chroot $rootfs /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TERM=linux SHELL=/bin/bash LANG=zh_CN.utf8 /bin/bash /root/qinglong-install-deps.sh >> "$installlog" 2>&1 || {
+print_log_tail
+abort "- 安装面板依赖失败，详细日志：/data/adb/qinglong-install.log"
+}
 
 unmountdir
 ui_print "- 青龙面板模块安装完成，重启后访问 http://127.0.0.1:5700"
