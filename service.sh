@@ -4,7 +4,7 @@
 # 这将确保您的模块仍能正常工作
 # 即使Magisk将来更改其挂载点
 MODDIR=${0%/*}
-export rootfs=/data/local/debian
+export rootfs=/data/debian
 logfile=/data/adb/qinglong-module.log
 failfile=/data/adb/qinglong-module.fail
 maxfails=3
